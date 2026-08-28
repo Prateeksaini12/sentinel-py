@@ -2,7 +2,7 @@
 
 A local, real-time system & security monitoring dashboard. Sentinel Py runs a small Flask server **on your own computer** and gives you a live browser dashboard of your CPU, RAM, disk, network connections, running processes, startup items, firewall status, and a one-click security audit — all with real data pulled directly from your machine, not a simulation.
 
-> ⚠️ **Important: this is a local desktop tool, not a hosted website.** Every visitor must run it on their *own* PC to see their *own* specs. See [Why this can't be a single hosted link](#why-this-cant-be-a-single-hosted-link) below.
+
 
 ---
 
