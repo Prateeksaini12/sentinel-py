@@ -1,0 +1,1662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Sentinel Py — Cyber Monitoring</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/feather-icons"></script>
+<style>
+:root{
+  --bg:#0a0e17;
+  --panel:#111826;
+  --panel-2:#0d1420;
+  --border:rgba(148,163,184,.12);
+  --text:#e7ecf5;
+  --muted:#8b98ad;
+  --accent:#22d3ee;
+  --accent-2:#7c5cff;
+  --good:#34d399;
+  --warn:#fbbf24;
+  --bad:#fb7185;
+  --radius:14px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+  font-family:'Space Grotesk',sans-serif;
+  background:
+    radial-gradient(1200px 600px at 90% -10%, rgba(124,92,255,.12), transparent 60%),
+    radial-gradient(1000px 500px at -10% 10%, rgba(34,211,238,.10), transparent 55%),
+    var(--bg);
+  color:var(--text);
+  min-height:100vh;
+}
+::selection{background:rgba(34,211,238,.25);}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-thumb{background:rgba(148,163,184,.25);border-radius:8px;}
+.mono{font-family:'JetBrains Mono',monospace;}
+
+/* ---------- layout ---------- */
+.app{display:flex;min-height:100vh;}
+
+.sidebar{
+  width:78px;
+  background:linear-gradient(180deg, var(--panel), var(--panel-2));
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;justify-content:space-between;
+  padding:22px 0;
+  position:sticky;top:0;height:100vh;
+  transition:width .22s ease;
+  z-index:30;
+}
+.sidebar:hover{width:232px;}
+.brand{display:flex;align-items:center;gap:12px;padding:0 20px 26px;}
+.brand-mark{
+  width:34px;height:34px;flex:0 0 auto;border-radius:9px;
+  background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 22px rgba(34,211,238,.35);
+}
+.brand-mark svg{width:18px;height:18px;stroke:#04121a;}
+.brand-text{white-space:nowrap;opacity:0;transform:translateX(-6px);transition:opacity .2s ease, transform .2s ease;}
+.sidebar:hover .brand-text{opacity:1;transform:translateX(0);}
+.brand-text b{display:block;font-weight:700;font-size:15px;letter-spacing:.3px;}
+.brand-text span{display:block;font-size:11px;color:var(--muted);}
+
+.nav{display:flex;flex-direction:column;gap:4px;padding:0 12px;}
+.nav-item{
+  display:flex;align-items:center;gap:14px;
+  padding:11px 12px;border-radius:10px;cursor:pointer;color:var(--muted);
+  white-space:nowrap;overflow:hidden;
+}
+.nav-item svg{width:18px;height:18px;flex:0 0 auto;}
+.nav-item span{opacity:0;transition:opacity .15s ease;font-size:14px;font-weight:500;}
+.sidebar:hover .nav-item span{opacity:1;}
+.nav-item:hover{background:rgba(148,163,184,.08);color:var(--text);}
+.nav-item{ position:relative; transition:color .2s ease, background .2s ease; }
+.nav-item.active{
+  background:rgba(34,211,238,.1);
+  color:var(--accent);
+  box-shadow:inset 0 0 0 1px rgba(34,211,238,.25);
+  animation:navPop .35s ease;
+}
+@keyframes navPop{
+  0%{ transform:scale(.97); }
+  50%{ transform:scale(1.015); }
+  100%{ transform:scale(1); }
+}
+.nav-item svg{ transition:transform .25s ease; }
+.nav-item.active svg{ transform:scale(1.08); }
+
+/* sliding indicator bar on the left edge of active nav item */
+.nav-indicator{
+  position:absolute; left:0; width:3px; height:0; border-radius:0 3px 3px 0;
+  background:linear-gradient(180deg,var(--accent),var(--accent-2));
+  box-shadow:0 0 10px var(--accent);
+  transition:top .3s cubic-bezier(.4,0,.2,1), height .3s ease;
+  pointer-events:none; z-index:1;
+}
+
+/* click ripple */
+.nav-item{ overflow:hidden; }
+.ripple{
+  position:absolute; border-radius:50%; background:rgba(34,211,238,.35);
+  transform:scale(0); animation:rippleAnim .55s ease-out forwards; pointer-events:none;
+}
+@keyframes rippleAnim{ to{ transform:scale(3); opacity:0; } }
+.nav-footer{padding:0 12px;}
+.session-uptime{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 12px;border-radius:10px;
+  color:var(--muted);white-space:nowrap;overflow:hidden;
+}
+.session-uptime .dot-live{
+  width:8px;height:8px;border-radius:50%;flex:0 0 auto;
+  background:var(--good);box-shadow:0 0 8px var(--good);
+  animation:dotPulse 1.8s ease-in-out infinite;
+}
+.session-uptime-text{opacity:0;transition:opacity .15s ease;display:flex;flex-direction:column;}
+.sidebar:hover .session-uptime-text{opacity:1;}
+.session-uptime-label{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);}
+.session-uptime-val{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text);font-weight:600;}
+
+/* ---------- main ---------- */
+.main{flex:1;min-width:0;padding:26px 30px 60px;}
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:22px;flex-wrap:wrap;gap:14px;
+}
+.topbar h1{font-size:22px;font-weight:700;letter-spacing:.2px;}
+.topbar .sub{color:var(--muted);font-size:13px;margin-top:2px;}
+.top-actions{display:flex;align-items:center;gap:10px;}
+.pill{
+  display:flex;align-items:center;gap:8px;
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:999px;padding:8px 14px;font-size:12.5px;color:var(--muted);
+}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 8px var(--good);animation:dotPulse 1.8s ease-in-out infinite;}
+.dot.offline{background:var(--bad);box-shadow:0 0 8px var(--bad);animation:none;}
+@keyframes dotPulse{
+  0%,100%{opacity:1;transform:scale(1);}
+  50%{opacity:.55;transform:scale(.85);}
+}
+.icon-btn{
+  width:38px;height:38px;border-radius:10px;border:1px solid var(--border);
+  background:var(--panel);display:flex;align-items:center;justify-content:center;
+  cursor:pointer;color:var(--muted);
+}
+.icon-btn:hover{color:var(--accent);border-color:rgba(34,211,238,.4);}
+.icon-btn svg{width:17px;height:17px;}
+
+.section{display:none;animation:fadeIn .35s ease;}
+.section.active{display:block;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(14px) scale(.99);}to{opacity:1;transform:translateY(0) scale(1);}}
+
+.section.active .card{
+  opacity:0;
+  animation:cardStagger .5s ease forwards;
+}
+.section.active .card:nth-child(1){animation-delay:.03s;}
+.section.active .card:nth-child(2){animation-delay:.09s;}
+.section.active .card:nth-child(3){animation-delay:.15s;}
+.section.active .card:nth-child(4){animation-delay:.21s;}
+@keyframes cardStagger{
+  from{opacity:0;transform:translateY(10px);}
+  to{opacity:1;transform:translateY(0);}
+}
+
+.card{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:18px 20px;
+  transition:transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+}
+.card:hover{
+  transform:translateY(-3px);
+  border-color:rgba(34,211,238,.28);
+  box-shadow:0 10px 30px -12px rgba(34,211,238,.18);
+}
+.card h3{font-size:13.5px;font-weight:600;color:var(--muted);letter-spacing:.3px;text-transform:uppercase;margin-bottom:14px;}
+.card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.card-head h3{margin-bottom:0;}
+
+/* ---------- dashboard grid ---------- */
+.grid{display:grid;gap:18px;}
+.section.active .grid > .card{
+  opacity:0;
+  animation:cardStagger .5s ease forwards;
+}
+.section.active .grid > .card:nth-child(1){animation-delay:.03s;}
+.section.active .grid > .card:nth-child(2){animation-delay:.09s;}
+.section.active .grid > .card:nth-child(3){animation-delay:.15s;}
+.section.active .grid > .card:nth-child(4){animation-delay:.21s;}
+.grid.top4{grid-template-columns:repeat(4,1fr);}
+.grid.two{grid-template-columns:1.15fr .85fr;}
+.grid.two2{grid-template-columns:1fr 1fr;}
+@media (max-width:1150px){.grid.top4{grid-template-columns:repeat(2,1fr);} .grid.two,.grid.two2{grid-template-columns:1fr;}}
+
+@media (max-width:720px){
+  .app{flex-direction:column;}
+  .sidebar{
+    width:100%;height:auto;position:sticky;top:0;
+    flex-direction:row;padding:10px 14px;overflow-x:auto;
+  }
+  .sidebar:hover{width:100%;}
+  .brand{display:none;}
+  .nav{flex-direction:row;padding:0;gap:6px;}
+  .nav-item{white-space:nowrap;}
+  .nav-item span{opacity:1;font-size:12.5px;}
+  .nav-footer{display:none;}
+  .grid.top4{grid-template-columns:1fr 1fr;}
+  .main{padding:16px;}
+  .topbar{flex-direction:column;align-items:flex-start;}
+}
+
+.stat{display:flex;flex-direction:column;gap:6px;}
+.stat-top{display:flex;align-items:center;justify-content:space-between;}
+.stat-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;}
+.stat-icon svg{width:16px;height:16px;}
+.stat-val{font-size:28px;font-weight:700;font-family:'JetBrains Mono',monospace;}
+.stat-label{color:var(--muted);font-size:12.5px;}
+.bar-track{height:6px;border-radius:6px;background:rgba(148,163,184,.14);overflow:hidden;margin-top:6px;}
+.bar-fill{height:100%;border-radius:6px;transition:width .6s ease, background .4s ease;}
+
+/* ---------- health gauge ---------- */
+.gauge-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;padding-top:4px;}
+.gauge-num{font-size:34px;font-weight:700;font-family:'JetBrains Mono',monospace;margin-top:-52px;}
+.gauge-status{font-size:12.5px;color:var(--muted);margin-top:2px;letter-spacing:.4px;text-transform:uppercase;}
+.gauge-legend{display:flex;gap:14px;margin-top:14px;font-size:11.5px;color:var(--muted);}
+.gauge-legend span{display:flex;align-items:center;gap:6px;}
+.gauge-legend i{width:8px;height:8px;border-radius:2px;display:inline-block;}
+
+.summary-list{display:flex;flex-direction:column;gap:12px;}
+.summary-row{display:flex;align-items:center;justify-content:space-between;font-size:13.5px;padding:9px 0;border-bottom:1px dashed var(--border);}
+.summary-row:last-child{border-bottom:none;}
+.summary-row .k{color:var(--muted);display:flex;align-items:center;gap:8px;}
+.summary-row .v{font-family:'JetBrains Mono',monospace;font-weight:600;}
+
+/* ---------- firewall status card ---------- */
+.fw-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 0 4px;gap:10px;}
+.fw-shield{
+  position:relative;width:96px;height:96px;
+  display:flex;align-items:center;justify-content:center;
+}
+.fw-shield svg{
+  width:56px;height:56px;stroke:var(--muted);
+  transition:stroke .4s ease, filter .4s ease;
+  z-index:2;
+}
+.fw-shield.on svg{stroke:var(--good);filter:drop-shadow(0 0 10px rgba(52,211,153,.6));}
+.fw-shield.off svg{stroke:var(--bad);filter:drop-shadow(0 0 10px rgba(251,113,133,.6));}
+.fw-shield.unknown svg{stroke:var(--warn);filter:drop-shadow(0 0 8px rgba(251,191,36,.5));}
+
+.fw-ring{
+  position:absolute;inset:0;border-radius:50%;
+  border:2px solid rgba(148,163,184,.15);
+}
+.fw-shield.on .fw-ring{border-color:rgba(52,211,153,.35);animation:fwSpin 6s linear infinite;
+  border-top-color:var(--good);}
+.fw-shield.off .fw-ring{border-color:rgba(251,113,133,.35);}
+@keyframes fwSpin{to{transform:rotate(360deg);}}
+
+.fw-pulse{
+  position:absolute;inset:0;border-radius:50%;
+  opacity:0;
+}
+.fw-shield.on .fw-pulse{
+  background:rgba(52,211,153,.18);
+  animation:fwPulse 2s ease-out infinite;
+}
+.fw-shield.off .fw-pulse{
+  background:rgba(251,113,133,.18);
+  animation:fwPulseFast 1.1s ease-out infinite;
+}
+@keyframes fwPulse{
+  0%{transform:scale(.7);opacity:.55;}
+  100%{transform:scale(1.5);opacity:0;}
+}
+@keyframes fwPulseFast{
+  0%{transform:scale(.7);opacity:.6;}
+  50%{transform:scale(1.15);opacity:.25;}
+  100%{transform:scale(.7);opacity:.6;}
+}
+
+.fw-status-text{font-size:17px;font-weight:700;font-family:'Space Grotesk',sans-serif;letter-spacing:.3px;}
+.fw-status-text.on{color:var(--good);}
+.fw-status-text.off{color:var(--bad);}
+.fw-status-text.unknown{color:var(--warn);}
+.fw-sub{font-size:12px;color:var(--muted);text-align:center;}
+.fw-platform{font-size:10.5px;color:var(--muted);opacity:.7;letter-spacing:.3px;text-transform:uppercase;}
+
+/* ---------- patch status card ---------- */
+.patch-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 0 4px;gap:8px;}
+.patch-orbit{position:relative;width:96px;height:96px;display:flex;align-items:center;justify-content:center;}
+.patch-icon{
+  width:40px;height:40px;stroke:var(--muted);z-index:3;
+  transition:stroke .4s ease, filter .4s ease;
+}
+.patch-ring{
+  position:absolute;border-radius:50%;
+  border:2px solid rgba(148,163,184,.16);
+}
+.patch-ring.r1{inset:0;}
+.patch-ring.r2{inset:14px;}
+
+.patch-orbit.checking .patch-icon{
+  stroke:var(--accent);
+  animation:patchSpinIcon 1.4s linear infinite;
+  filter:drop-shadow(0 0 8px rgba(34,211,238,.5));
+}
+.patch-orbit.checking .patch-ring.r1{
+  border-color:transparent;border-top-color:var(--accent);border-right-color:var(--accent);
+  animation:patchSpin 1.1s linear infinite;
+}
+.patch-orbit.checking .patch-ring.r2{
+  border-color:transparent;border-bottom-color:var(--accent-2);border-left-color:var(--accent-2);
+  animation:patchSpinRev 1.6s linear infinite;
+}
+@keyframes patchSpinIcon{to{transform:rotate(360deg);}}
+@keyframes patchSpin{to{transform:rotate(360deg);}}
+@keyframes patchSpinRev{to{transform:rotate(-360deg);}}
+
+.patch-orbit.good .patch-icon{stroke:var(--good);filter:drop-shadow(0 0 10px rgba(52,211,153,.6));}
+.patch-orbit.good .patch-ring.r1{border-color:rgba(52,211,153,.35);}
+.patch-orbit.good .patch-ring.r2{border-color:rgba(52,211,153,.2);}
+
+.patch-orbit.warn .patch-icon{stroke:var(--warn);filter:drop-shadow(0 0 10px rgba(251,191,36,.55));animation:patchShake 2.4s ease-in-out infinite;}
+.patch-orbit.warn .patch-ring.r1{border-color:rgba(251,191,36,.35);}
+.patch-orbit.warn .patch-ring.r2{border-color:rgba(251,191,36,.2);}
+@keyframes patchShake{
+  0%,100%{transform:rotate(0deg);}
+  25%{transform:rotate(-8deg);}
+  75%{transform:rotate(8deg);}
+}
+
+.patch-orbit.unknown .patch-icon{stroke:var(--muted);}
+
+.patch-status-text{font-size:16.5px;font-weight:700;font-family:'Space Grotesk',sans-serif;}
+.patch-status-text.good{color:var(--good);}
+.patch-status-text.warn{color:var(--warn);}
+.patch-status-text.unknown{color:var(--muted);}
+.patch-sub{font-size:12px;color:var(--muted);text-align:center;max-width:220px;}
+.patch-platform{font-size:10.5px;color:var(--muted);opacity:.7;letter-spacing:.3px;text-transform:uppercase;}
+
+.chart-box{position:relative;height:230px;}
+
+/* ---------- tables ---------- */
+table{width:100%;border-collapse:collapse;font-size:13.5px;}
+th,td{padding:10px 12px;text-align:left;}
+thead th{color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);}
+tbody tr{border-bottom:1px solid var(--border);}
+tbody tr:hover{background:rgba(148,163,184,.05);}
+tbody tr:last-child{border-bottom:none;}
+.badge{padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.3px;}
+.badge.created,.badge.success{background:rgba(52,211,153,.14);color:var(--good);}
+.badge.deleted,.badge.danger{background:rgba(251,113,133,.14);color:var(--bad);}
+.badge.modified,.badge.warning{background:rgba(251,191,36,.14);color:var(--warn);}
+
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+.input{
+  background:var(--panel-2);border:1px solid var(--border);color:var(--text);
+  padding:9px 13px;border-radius:9px;font-size:13.5px;font-family:inherit;outline:none;
+}
+.input:focus{border-color:rgba(34,211,238,.5);}
+.select{background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:9px 13px;border-radius:9px;font-size:13.5px;font-family:inherit;}
+.btn{
+  background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  color:#04121a;border:none;padding:10px 18px;border-radius:9px;font-weight:700;
+  font-size:13.5px;cursor:pointer;transition:transform .15s ease, filter .15s ease;
+}
+.btn:hover{filter:brightness(1.08);transform:translateY(-1px);}
+.btn:disabled{opacity:.55;cursor:not-allowed;transform:none;}
+.btn.ghost{background:var(--panel-2);color:var(--text);border:1px solid var(--border);}
+.chip{
+  padding:8px 16px;border-radius:999px;border:1px solid var(--border);
+  background:var(--panel-2);color:var(--muted);cursor:pointer;font-size:13px;font-weight:600;
+}
+.chip.active{background:rgba(34,211,238,.12);color:var(--accent);border-color:rgba(34,211,238,.4);}
+
+/* shimmer skeleton */
+.skeleton-row td{
+  background:linear-gradient(90deg, rgba(148,163,184,.06) 25%, rgba(148,163,184,.14) 37%, rgba(148,163,184,.06) 63%);
+  background-size:400% 100%;
+  animation:shimmer 1.4s ease infinite;
+  color:transparent !important;
+  border-radius:6px;
+}
+@keyframes shimmer{
+  0%{background-position:100% 50%;}
+  100%{background-position:0% 50%;}
+}
+
+.kill-btn{
+  background:rgba(251,113,133,.14);color:var(--bad);border:1px solid rgba(251,113,133,.3);
+  padding:5px 12px;border-radius:7px;font-size:12px;cursor:pointer;font-weight:600;
+}
+.kill-btn:hover{background:rgba(251,113,133,.24);}
+.pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:12px;color:var(--muted);font-size:13px;}
+
+/* ---------- forms ---------- */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:640px;}
+.field{display:flex;flex-direction:column;gap:6px;}
+.field label{font-size:12.5px;color:var(--muted);}
+.field.full{grid-column:1/-1;}
+.msg{margin-top:14px;font-size:13.5px;padding:10px 14px;border-radius:9px;display:none;}
+.msg.show{display:block;}
+.msg.ok{background:rgba(52,211,153,.1);color:var(--good);}
+.msg.err{background:rgba(251,113,133,.1);color:var(--bad);}
+
+/* ---------- info cards ---------- */
+.info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+@media (max-width:900px){.info-grid{grid-template-columns:1fr 1fr;}}
+.info-card{background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:16px 18px;}
+.info-card h4{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;}
+.info-card p{font-size:15px;font-weight:600;font-family:'JetBrains Mono',monospace;}
+.disk-row{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin-bottom:5px;}
+
+/* ---------- audit ---------- */
+.scan-box{display:flex;flex-direction:column;align-items:flex-start;gap:14px;}
+.scan-btn-row{display:flex;gap:10px;flex-wrap:wrap;}
+.mini-spinner{
+  width:14px;height:14px;border-radius:50%;
+  border:2px solid rgba(34,211,238,.25);border-top-color:var(--accent);
+  animation:spin .8s linear infinite;display:inline-block;vertical-align:middle;margin-right:6px;
+}
+.scan-status{color:var(--muted);font-size:13px;}
+.radar-loader{
+  position:relative;
+  width:120px;height:120px;border-radius:50%;
+  border:2px solid rgba(34,211,238,.15);
+}
+.radar-loader::before{
+  content:'';
+  position:absolute;inset:-2px;
+  border-radius:50%;
+  background:conic-gradient(from 0deg, transparent 0%, rgba(34,211,238,.05) 60%, var(--accent) 100%);
+  animation:spin 1.4s linear infinite;
+  -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+          mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+}
+.radar-loader::after{
+  content:'';
+  position:absolute;inset:0;
+  border-radius:50%;
+  background:
+    repeating-conic-gradient(rgba(34,211,238,.08) 0deg 2deg, transparent 2deg 30deg);
+}
+.radar-sweep{
+  position:absolute;top:50%;left:50%;width:50%;height:2px;
+  background:linear-gradient(90deg, var(--accent), transparent);
+  transform-origin:left center;
+  animation:spin 1.4s linear infinite;
+  box-shadow:0 0 8px var(--accent);
+}
+.radar-dot{
+  position:absolute;top:50%;left:50%;width:6px;height:6px;margin:-3px;
+  border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);
+}
+.radar-loader.hidden,.radar-text.hidden,.hidden{display:none !important;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.scan-results-container{display:none;grid-template-columns:repeat(3,1fr);gap:16px;width:100%;margin-top:6px;}
+.scan-results-container.show{display:grid;}
+@media (max-width:1000px){.scan-results-container.show{grid-template-columns:1fr;}}
+.scan-result-card{background:var(--panel-2);border-radius:12px;padding:16px 18px;border:1px solid var(--border);}
+.scan-result-card.success{border-left:3px solid var(--good);}
+.scan-result-card.warning{border-left:3px solid var(--warn);}
+.scan-result-card.danger{border-left:3px solid var(--bad);}
+.scan-result-card h4{font-size:13.5px;margin-bottom:10px;}
+.scan-result-card ul{list-style:none;display:flex;flex-direction:column;gap:6px;}
+.scan-result-card li{font-size:12.5px;color:var(--muted);font-family:'JetBrains Mono',monospace;word-break:break-all;}
+
+/* ---------- settings drawer ---------- */
+.drawer{
+  position:fixed;top:0;right:-340px;width:320px;height:100vh;
+  background:var(--panel);border-left:1px solid var(--border);
+  padding:24px;z-index:50;transition:right .25s ease;
+}
+.drawer.open{right:0;}
+.drawer h3{margin-bottom:18px;}
+.drawer .field{margin-bottom:16px;}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:40;}
+.overlay.show{display:block;}
+
+/* ---------- boot splash (terminal style) ---------- */
+#bootSplash{
+  position:fixed;inset:0;z-index:100;
+  background:
+    repeating-linear-gradient(0deg, rgba(34,211,238,.025) 0px, rgba(34,211,238,.025) 1px, transparent 1px, transparent 3px),
+    radial-gradient(1200px 700px at 50% 20%, rgba(34,211,238,.10), transparent 60%),
+    var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;
+  transition:opacity .45s ease, visibility .45s ease;
+  font-family:'JetBrains Mono',monospace;
+}
+#bootSplash.hide{opacity:0;visibility:hidden;pointer-events:none;}
+
+.boot-shield{width:52px;height:52px;margin-bottom:18px;stroke:var(--accent);
+  filter:drop-shadow(0 0 10px rgba(34,211,238,.5));
+  animation:bootPulse 1.6s ease-in-out infinite;}
+@keyframes bootPulse{0%,100%{opacity:1;}50%{opacity:.55;}}
+
+.boot-title{
+  font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:24px;
+  letter-spacing:3px;color:var(--text);margin-bottom:2px;
+}
+.boot-title span{color:var(--accent);}
+.boot-tag{font-size:11px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:28px;}
+
+.boot-terminal{
+  width:380px;max-width:86vw;min-height:150px;
+  background:rgba(255,255,255,.02);
+  border:1px solid var(--border);border-radius:10px;
+  padding:16px 18px;font-size:12px;line-height:1.9;color:var(--muted);
+}
+.boot-line{opacity:0;animation:bootLineIn .3s ease forwards;display:flex;gap:8px;}
+.boot-line .ok{color:var(--good);flex:0 0 auto;}
+@keyframes bootLineIn{ to{opacity:1;} }
+.boot-cursor{display:inline-block;width:7px;height:13px;background:var(--accent);margin-left:2px;
+  animation:bootBlink .8s step-end infinite;vertical-align:middle;}
+@keyframes bootBlink{50%{opacity:0;}}
+
+.boot-progress-wrap{width:380px;max-width:86vw;margin-top:18px;display:flex;align-items:center;gap:12px;}
+.boot-progress-track{flex:1;height:3px;border-radius:3px;background:rgba(148,163,184,.14);overflow:hidden;}
+.boot-progress-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent-2));
+  box-shadow:0 0 8px var(--accent);transition:width .25s ease;}
+.boot-progress-pct{font-size:11px;color:var(--accent);min-width:34px;text-align:right;}
+</style>
+</head>
+<body>
+
+<div id="bootSplash">
+  <svg class="boot-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+    <path d="M12 2l8 4v6c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6l8-4z"/>
+    <path d="M9 12l2 2 4-4"/>
+  </svg>
+  <div class="boot-title">SENTINEL<span>PY</span></div>
+  <div class="boot-tag">Cyber Monitoring Suite</div>
+
+  <div class="boot-terminal" id="bootTerminal"></div>
+
+  <div class="boot-progress-wrap">
+    <div class="boot-progress-track"><div class="boot-progress-fill" id="bootProgressFill"></div></div>
+    <div class="boot-progress-pct" id="bootProgressPct">0%</div>
+  </div>
+</div>
+
+<div class="app">
+  <!-- ============ SIDEBAR ============ -->
+  <div class="sidebar">
+    <div>
+      <div class="brand">
+        <div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><path d="M12 2l8 4v6c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6l8-4z"/></svg></div>
+        <div class="brand-text"><b>Sentinel Py</b><span>Cyber Monitoring Suite</span></div>
+      </div>
+           <div class="nav" style="position:relative;">
+        <div class="nav-indicator" id="navIndicator"></div>
+        <div class="nav-item active" data-target="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Dashboard</span></div>
+        <div class="nav-item" data-target="process"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg><span>Process Monitor</span></div>
+        <div class="nav-item" data-target="network"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg><span>Network Monitor</span></div>
+                <div class="nav-item" data-target="security"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg><span>Security Audit</span></div>
+        <div class="nav-item" data-target="file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6l8-4z"/><path d="M12 8v4l3 2"/></svg><span>Persistence Monitor</span></div>
+                <div class="nav-item" data-target="sendlogs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3M8 7l4-4 4 4"/><path d="M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4"/></svg><span>Reports</span></div>
+      </div>
+    </div>
+    <div class="nav-footer">
+      <div class="session-uptime">
+        <div class="dot-live"></div>
+        <div class="session-uptime-text">
+          <span class="session-uptime-label">Monitoring for</span>
+          <span class="session-uptime-val" id="sessionUptimeVal">00:00:00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MAIN ============ -->
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <h1 id="sectionTitle">Dashboard</h1>
+        <div class="sub">Real-time system &amp; security overview</div>
+      </div>
+      <div class="top-actions">
+        <div class="pill"><span class="dot" id="connDot"></span><span id="connText">Connected</span></div>
+        <div class="pill mono" id="clockPill">--:--:--</div>
+        <div class="icon-btn" title="Refresh now" onclick="refreshAll()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0114.85-3.36L23 10M1 14l4.65 4.36A9 9 0 0020.5 15"/></svg></div>
+      </div>
+    </div>
+
+    <!-- ===================== DASHBOARD ===================== -->
+    <div id="dashboard" class="section active">
+      <div class="grid top4" style="margin-bottom:18px;">
+        <div class="card stat">
+          <div class="stat-top">
+            <div>
+              <div class="stat-label">CPU Usage</div>
+              <div class="stat-val" id="cpuVal">--%</div>
+            </div>
+            <div class="stat-icon" style="background:rgba(34,211,238,.12);color:var(--accent);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+            </div>
+          </div>
+          <div class="bar-track"><div class="bar-fill" id="cpuBar" style="width:0%;background:var(--accent);"></div></div>
+        </div>
+
+        <div class="card stat">
+          <div class="stat-top">
+            <div>
+              <div class="stat-label">RAM Usage</div>
+              <div class="stat-val" id="ramVal">--%</div>
+            </div>
+            <div class="stat-icon" style="background:rgba(124,92,255,.14);color:var(--accent-2);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 10v4M12 10v4M16 10v4"/></svg>
+            </div>
+          </div>
+          <div class="bar-track"><div class="bar-fill" id="ramBar" style="width:0%;background:var(--accent-2);"></div></div>
+        </div>
+
+        <div class="card stat">
+          <div class="stat-top">
+            <div>
+              <div class="stat-label">Active Processes</div>
+              <div class="stat-val" id="procVal">--</div>
+            </div>
+            <div class="stat-icon" style="background:rgba(52,211,153,.14);color:var(--good);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </div>
+          </div>
+          <div class="stat-label" style="margin-top:6px;">Since boot • live count</div>
+        </div>
+
+        <div class="card stat">
+          <div class="stat-top">
+            <div>
+              <div class="stat-label">Last Security Scan</div>
+              <div class="stat-val mono" id="lastScanVal" style="font-size:16px;">--</div>
+            </div>
+            <div class="stat-icon" style="background:rgba(251,191,36,.14);color:var(--warn);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6l8-4z"/></svg>
+            </div>
+          </div>
+          <div class="stat-label" style="margin-top:6px;">Full audit history</div>
+        </div>
+      </div>
+
+      <div class="grid two" style="margin-bottom:18px;">
+        <div class="card">
+          <div class="card-head"><h3>Live CPU Trend</h3><span class="stat-label mono" id="trendNow">CPU %</span></div>
+          <div class="chart-box"><canvas id="trendChart"></canvas></div>
+        </div>
+
+        <div class="card">
+          <h3>System Health</h3>
+          <div class="gauge-wrap">
+            <canvas id="healthGauge" width="240" height="140"></canvas>
+            <div class="gauge-num" id="healthNum">--</div>
+            <div class="gauge-status" id="healthStatus">Calculating…</div>
+            <div class="gauge-legend">
+              <span><i style="background:var(--bad);"></i>Critical</span>
+              <span><i style="background:var(--warn);"></i>Degraded</span>
+              <span><i style="background:var(--good);"></i>Optimal</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid two" style="margin-bottom:18px;">
+        <div class="card">
+          <h3>Security Score</h3>
+          <div class="gauge-wrap">
+            <canvas id="securityGauge" width="240" height="140"></canvas>
+            <div class="gauge-num" id="securityNum">--</div>
+            <div class="gauge-status" id="securityStatus">Run an audit to score</div>
+            <div class="gauge-legend">
+              <span><i style="background:var(--bad);"></i>At Risk</span>
+              <span><i style="background:var(--warn);"></i>Caution</span>
+              <span><i style="background:var(--good);"></i>Secure</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>Threat Alert Feed</h3><span class="stat-label mono" id="threatCount">0 alerts</span></div>
+          <div id="threatFeed" style="max-height:230px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
+            <div class="stat-label" style="padding:10px 0;">No alerts yet — run a security audit to populate this feed.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid two2">
+              <div class="card">
+          <h3>Firewall Status</h3>
+          <div class="fw-wrap">
+            <div class="fw-shield" id="fwShield">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6">
+                <path d="M12 2l8 4v6c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6l8-4z"/>
+              </svg>
+              <div class="fw-ring"></div>
+              <div class="fw-pulse"></div>
+            </div>
+            <div class="fw-status-text" id="fwStatusText">Checking…</div>
+            <div class="fw-sub" id="fwSubText">Querying system firewall</div>
+            <div class="fw-platform mono" id="fwPlatform"></div>
+          </div>
+        </div>
+
+                <div class="card">
+          <h3>OS Patch Status</h3>
+          <div class="patch-wrap">
+            <div class="patch-orbit" id="patchOrbit">
+              <div class="patch-ring r1"></div>
+              <div class="patch-ring r2"></div>
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" class="patch-icon">
+                <path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/>
+                <circle cx="12" cy="12" r="4"/>
+              </svg>
+            </div>
+            <div class="patch-status-text" id="patchStatusText">Checking…</div>
+            <div class="patch-sub" id="patchSubText">Contacting update service — this can take a moment</div>
+            <div class="patch-platform mono" id="patchPlatform"></div>
+            <button class="btn ghost" id="patchRescanBtn" onclick="loadPatchStatus()" style="margin-top:10px;">Re-check Now</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== PROCESS MONITOR ===================== -->
+    <div id="process" class="section">
+      <div class="card" style="margin-bottom:18px;">
+        <h3>CPU Load — Top Processes</h3>
+        <div class="chart-box"><canvas id="processChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="toolbar">
+          <input type="text" id="processSearch" class="input" placeholder="Search by name or PID…" style="flex:1;min-width:220px;">
+          <button class="btn ghost" onclick="loadProcesses(currentProcPage)">Refresh</button>
+        </div>
+        <div id="process-message" class="msg"></div>
+        <table>
+          <thead><tr><th>Name</th><th>PID</th><th>CPU %</th><th>RAM %</th><th>Risk</th><th>Action</th></tr></thead>
+          <tbody id="procTable"></tbody>
+        </table>
+        <div class="pager">
+          <button class="btn ghost" onclick="changeProcPage(-1)">Prev</button>
+          <span class="mono" id="procPageLabel">Page 1</span>
+          <button class="btn ghost" onclick="changeProcPage(1)">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== NETWORK MONITOR ===================== -->
+    <div id="network" class="section">
+      <div class="card" style="margin-bottom:18px;">
+        <h3>Network Throughput</h3>
+        <div class="chart-box"><canvas id="netChart"></canvas></div>
+      </div>
+      <div class="card" style="margin-bottom:18px;">
+        <div class="card-head"><h3>Active Connections</h3><button class="btn ghost" onclick="loadNetwork()">Refresh</button></div>
+        <table>
+          <thead><tr><th>IP</th><th>Port</th><th>Protocol</th><th>Status</th></tr></thead>
+          <tbody id="netTable"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>Listening Ports (This Machine)</h3>
+        <table>
+          <thead><tr><th>Port</th><th>Protocol</th><th>Risk</th></tr></thead>
+          <tbody id="portsTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+        <!-- ===================== PERSISTENCE MONITOR ===================== -->
+    <div id="file" class="section">
+      <div class="card">
+        <div class="card-head">
+          <h3>Persistence Monitor</h3>
+          <button class="btn ghost" onclick="loadStartupItems()">Rescan</button>
+        </div>
+        <p class="stat-label" style="margin-bottom:14px;">Programs configured to auto-run at login — a common technique malware uses to survive reboots.</p>
+        <div id="startupStatusBanner" class="scan-result-card success" style="margin-bottom:14px;">
+          <h4>Scanning…</h4>
+        </div>
+        <table>
+          <thead><tr><th>Entry</th></tr></thead>
+          <tbody id="startupTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===================== SECURITY AUDIT ===================== -->
+    <div id="security" class="section">
+      <div class="card">
+        <h3>Full Security Audit</h3>
+        <div class="scan-box">
+                    <button class="btn" id="scanButton" onclick="startFullAudit()">Start Full Security Audit</button>
+                    <div class="scan-btn-row">
+            <button class="btn ghost" id="btnScanProc" onclick="runSingleScan('processes')">Scan Processes Only</button>
+            <button class="btn ghost" id="btnScanNet" onclick="runSingleScan('network')">Scan Ports Only</button>
+          </div>
+                    <div id="radarLoader" class="radar-loader hidden">
+            <div class="radar-sweep"></div>
+            <div class="radar-dot"></div>
+          </div>
+          <div class="radar-text hidden" id="radarText">Scanning your system…</div>
+          <div id="scanStatus" class="scan-status">Last Scan: Never</div>
+                    <div id="scanResults" class="scan-results-container">
+            <div id="processResult" class="scan-result-card"></div>
+            <div id="networkResult" class="scan-result-card"></div>
+            <div id="hostsResult" class="scan-result-card"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ===================== SEND LOGS ===================== -->
+    <div id="sendlogs" class="section">
+      <div class="card" style="max-width:680px;">
+        <h3>Generate PDF Security Report</h3>
+                <div class="form-grid">
+          <div class="field full">
+            <label for="logType">Report Focus</label>
+            <select id="logType" class="select">
+              <option>All</option>
+              <option>Errors</option>
+              <option>Warnings</option>
+              <option>Network</option>
+              <option>Process</option>
+            </select>
+          </div>
+          <div class="field full">
+            <button class="btn" id="sendLogsBtn" onclick="downloadReport()">Generate &amp; Download PDF</button>
+          </div>
+        </div>
+        <div id="sendLogsMsg" class="msg"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+feather.replace();
+
+/* ---------------- navigation ---------------- */
+const navIndicator = document.getElementById('navIndicator');
+
+function moveNavIndicator(el){
+  if(!el || !navIndicator) return;
+  navIndicator.style.top = el.offsetTop + 'px';
+  navIndicator.style.height = el.offsetHeight + 'px';
+}
+
+document.querySelectorAll('.nav-item[data-target]').forEach(item=>{
+  item.addEventListener('click', (e)=>{
+    // ripple effect
+    const rect = item.getBoundingClientRect();
+    const ripple = document.createElement('span');
+    ripple.className = 'ripple';
+    const size = Math.max(rect.width, rect.height);
+    ripple.style.width = ripple.style.height = size + 'px';
+    ripple.style.left = (e.clientX - rect.left - size/2) + 'px';
+    ripple.style.top = (e.clientY - rect.top - size/2) + 'px';
+    item.appendChild(ripple);
+    setTimeout(()=> ripple.remove(), 550);
+
+    switchSection(item.dataset.target);
+    moveNavIndicator(item);
+  });
+});
+
+// position indicator on first active item once page loads
+window.addEventListener('load', ()=>{
+  moveNavIndicator(document.querySelector('.nav-item.active'));
+});
+
+function switchSection(id){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-item[data-target]').forEach(n=>n.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const navItem = document.querySelector(`.nav-item[data-target="${id}"]`);
+  if(navItem) navItem.classList.add('active');
+
+     const titles = {dashboard:'Dashboard',process:'Process Monitor',network:'Network Monitor',file:'Persistence Monitor',security:'Security Audit',sendlogs:'Reports'};
+  document.getElementById('sectionTitle').innerText = titles[id] || id;
+
+  if(id==='process') loadProcesses(currentProcPage);
+  if(id==='network') loadNetwork();
+  if(id==='file') loadStartupItems();
+}
+
+/* ---------------- clock ---------------- */
+setInterval(()=>{
+  document.getElementById('clockPill').innerText = new Date().toLocaleTimeString();
+},1000);
+
+/* ---------------- session/dashboard uptime (not system uptime) ---------------- */
+const sessionStartTime = Date.now();
+function formatSessionUptime(ms){
+  const totalSec = Math.floor(ms / 1000);
+  const h = String(Math.floor(totalSec / 3600)).padStart(2, '0');
+  const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+  const s = String(totalSec % 60).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+setInterval(()=>{
+  const el = document.getElementById('sessionUptimeVal');
+  if(el) el.innerText = formatSessionUptime(Date.now() - sessionStartTime);
+}, 1000);
+
+/* ---------------- shared chart theme ---------------- */
+Chart.defaults.color = '#8b98ad';
+Chart.defaults.font.family = "'JetBrains Mono', monospace";
+Chart.defaults.borderColor = 'rgba(148,163,184,.12)';
+
+/* ---------------- trend chart (CPU / RAM) ---------------- */
+const trendCtx = document.getElementById('trendChart').getContext('2d');
+const trendChart = new Chart(trendCtx, {
+  type:'line',
+  data:{ labels:[], datasets:[
+    {label:'CPU %', data:[], borderColor:'#22d3ee', backgroundColor:'rgba(34,211,238,.12)', fill:true, tension:.35, pointRadius:0, borderWidth:2}
+  ]},
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    animation:false,
+    interaction:{intersect:false, mode:'index'},
+    scales:{ y:{min:0,max:100, grid:{color:'rgba(148,163,184,.08)'}}, x:{grid:{display:false}} },
+    plugins:{ legend:{labels:{boxWidth:10,usePointStyle:true}} }
+  }
+});
+
+/* ---------------- health gauge (replaces old donut) ---------------- */
+function drawHealthGauge(value){
+  const canvas = document.getElementById('healthGauge');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+  const cx = w/2, cy = h - 6, r = 92;
+  const startAngle = Math.PI, endAngle = 0;
+
+  // background arc
+  ctx.beginPath();
+  ctx.lineWidth = 16;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(148,163,184,.12)';
+  ctx.arc(cx, cy, r, startAngle, endAngle);
+  ctx.stroke();
+
+  // colored zones (subtle underlay)
+  const zones = [[0,.5,'#fb7185'],[.5,.75,'#fbbf24'],[.75,1,'#34d399']];
+  zones.forEach(([a,b,color])=>{
+    ctx.beginPath();
+    ctx.lineWidth = 16;
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = .18;
+    ctx.arc(cx, cy, r, startAngle + (Math.PI*a), startAngle + (Math.PI*b));
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  });
+
+  // value arc
+  const pct = Math.max(0, Math.min(100, value)) / 100;
+  const color = pct > .75 ? '#34d399' : pct > .5 ? '#fbbf24' : '#fb7185';
+  ctx.beginPath();
+  ctx.lineWidth = 16;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = color;
+  ctx.shadowBlur = 14;
+  ctx.shadowColor = color;
+  ctx.arc(cx, cy, r, startAngle, startAngle + (Math.PI * pct));
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // needle
+  const needleAngle = startAngle + (Math.PI * pct);
+  const nx = cx + Math.cos(needleAngle) * (r - 24);
+  const ny = cy + Math.sin(needleAngle) * (r - 24);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(nx, ny);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#e7ecf5';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, 6, 0, Math.PI*2);
+  ctx.fillStyle = '#e7ecf5';
+  ctx.fill();
+
+  document.getElementById('healthNum').innerText = Math.round(value) + '%';
+  const statusEl = document.getElementById('healthStatus');
+  if(pct > .75){ statusEl.innerText = 'Optimal'; statusEl.style.color = '#34d399'; }
+  else if(pct > .5){ statusEl.innerText = 'Degraded'; statusEl.style.color = '#fbbf24'; }
+  else { statusEl.innerText = 'Critical'; statusEl.style.color = '#fb7185'; }
+}
+
+function drawSecurityGauge(value){
+  const canvas = document.getElementById('securityGauge');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+  const cx = w/2, cy = h - 6, r = 92;
+  const startAngle = Math.PI, endAngle = 0;
+
+  ctx.beginPath();
+  ctx.lineWidth = 16;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(148,163,184,.12)';
+  ctx.arc(cx, cy, r, startAngle, endAngle);
+  ctx.stroke();
+
+  const pct = Math.max(0, Math.min(100, value)) / 100;
+  const color = pct > .75 ? '#34d399' : pct > .5 ? '#fbbf24' : '#fb7185';
+  ctx.beginPath();
+  ctx.lineWidth = 16;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = color;
+  ctx.shadowBlur = 14;
+  ctx.shadowColor = color;
+  ctx.arc(cx, cy, r, startAngle, startAngle + (Math.PI * pct));
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  const needleAngle = startAngle + (Math.PI * pct);
+  const nx = cx + Math.cos(needleAngle) * (r - 24);
+  const ny = cy + Math.sin(needleAngle) * (r - 24);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(nx, ny);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#e7ecf5';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, 6, 0, Math.PI*2);
+  ctx.fillStyle = '#e7ecf5';
+  ctx.fill();
+
+  document.getElementById('securityNum').innerText = Math.round(value) + '%';
+  const statusEl = document.getElementById('securityStatus');
+  if(pct > .75){ statusEl.innerText = 'Secure'; statusEl.style.color = '#34d399'; }
+  else if(pct > .5){ statusEl.innerText = 'Caution'; statusEl.style.color = '#fbbf24'; }
+  else { statusEl.innerText = 'At Risk'; statusEl.style.color = '#fb7185'; }
+}
+
+/* ---------------- threat alert feed ---------------- */
+function loadThreatFeed(){
+  fetch('/threat-feed')
+    .then(res=>res.json())
+    .then(alerts=>{
+      document.getElementById('threatCount').innerText = `${alerts.length} alert${alerts.length===1?'':'s'}`;
+      const feed = document.getElementById('threatFeed');
+      if(!alerts.length){
+        feed.innerHTML = '<div class="stat-label" style="padding:10px 0;">No alerts yet — run a security audit to populate this feed.</div>';
+        return;
+      }
+      feed.innerHTML = alerts.slice(0,12).map(a=>{
+        const color = a.severity==='critical' ? 'var(--bad)' : a.severity==='warning' ? 'var(--warn)' : 'var(--accent)';
+        return `<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px dashed var(--border);">
+          <div style="width:8px;height:8px;border-radius:50%;background:${color};margin-top:5px;flex:0 0 auto;"></div>
+          <div style="flex:1;">
+            <div style="font-size:13px;">${a.message}</div>
+            <div class="mono" style="font-size:11px;color:var(--muted);">${a.time}</div>
+          </div>
+        </div>`;
+      }).join('');
+    })
+    .catch(err=>console.error('Failed to load threat feed:', err));
+}
+setInterval(loadThreatFeed, 5000);
+
+/* ---------------- animated number count-up ---------------- */
+function animateValue(el, newValue, suffix = ''){
+  if(!el) return;
+  const oldValue = parseFloat(el.dataset.rawValue || '0');
+  const target = parseFloat(newValue);
+  if(isNaN(target)) { el.innerText = newValue; return; }
+  el.dataset.rawValue = target;
+  const duration = 500;
+  const start = performance.now();
+  function step(now){
+    const progress = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const current = oldValue + (target - oldValue) * eased;
+    el.innerText = Math.round(current) + suffix;
+    if(progress < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+/* ---------------- dashboard polling ---------------- */
+let refreshTimer = null;
+function setRefreshRate(ms){
+  if(refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(refreshAll, parseInt(ms,10));
+}
+
+function formatUptime(bootTimestamp){
+  const secs = Math.max(0, Math.floor(Date.now()/1000) - bootTimestamp);
+  const d = Math.floor(secs/86400), h = Math.floor((secs%86400)/3600), m = Math.floor((secs%3600)/60);
+  return `${d}d ${h}h ${m}m`;
+}
+
+function refreshAll(){
+  fetch('/dashboard-data')
+    .then(res=>res.json())
+    .then(data=>{
+      document.getElementById('connDot').classList.remove('offline');
+      document.getElementById('connText').innerText = 'Connected';
+
+       animateValue(document.getElementById('cpuVal'), data.cpu, '%');
+      animateValue(document.getElementById('ramVal'), data.ram, '%');
+      document.getElementById('cpuBar').style.width = data.cpu + '%';
+      document.getElementById('ramBar').style.width = data.ram + '%';
+          animateValue(document.getElementById('procVal'), data.procCount);
+      document.getElementById('lastScanVal').innerText = data.lastScan || '--';
+
+      drawHealthGauge(data.health);
+
+      const t = new Date().toLocaleTimeString();
+      trendChart.data.labels.push(t);
+      trendChart.data.datasets[0].data.push(data.cpu);
+      if(trendChart.data.labels.length > 24){
+        trendChart.data.labels.shift();
+        trendChart.data.datasets[0].data.shift();
+      }
+      trendChart.update('none');
+
+      drawSecurityGauge(data.securityScore);
+    })
+    .catch(()=>{
+      document.getElementById('connDot').classList.add('offline');
+      document.getElementById('connText').innerText = 'Offline';
+    });
+}
+
+/* ---------------- process monitor ---------------- */
+let currentProcPage = 1;
+let procTotalPages = 1;
+let processChart = null;
+
+function loadProcesses(page = 1){
+  currentProcPage = page;
+  const tbodyEl = document.getElementById('procTable');
+  if(!tbodyEl.dataset.loaded){
+    tbodyEl.innerHTML = Array(5).fill('<tr class="skeleton-row"><td>Loading</td><td>0000</td><td>00%</td><td>00%</td><td>Normal</td><td>Kill</td></tr>').join('');
+  }
+  fetch(`/processes?page=${page}`)
+    .then(res=>res.json())
+    .then(data=>{
+      procTotalPages = data.total_pages || 1;
+      document.getElementById('procPageLabel').innerText = `Page ${data.page} / ${procTotalPages}`;
+
+      const suspiciousNames = ['keylog','hook','inputlog','keystroke','logger','miner','stealer'];
+            const tbody = document.getElementById('procTable');
+      tbody.dataset.loaded = '1';
+      tbody.innerHTML = '';
+      data.processes.forEach(p=>{
+        const nameLower = (p.name || '').toLowerCase();
+        const isSuspiciousName = suspiciousNames.some(k=>nameLower.includes(k));
+        const isHeavy = p.cpu > 70;
+        let risk = '<span class="badge success">Normal</span>';
+        if(isSuspiciousName) risk = '<span class="badge danger">Suspicious</span>';
+        else if(isHeavy) risk = '<span class="badge warning">High Load</span>';
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${p.name}</td>
+          <td class="mono">${p.pid}</td>
+          <td class="mono">${p.cpu}%</td>
+          <td class="mono">${p.ram}%</td>
+          <td>${risk}</td>
+          <td><button class="kill-btn" onclick="killProc(${p.pid})">Kill</button></td>`;
+        tbody.appendChild(row);
+      });
+
+      const labels = data.processes.map(p=>p.name.length>10?p.name.slice(0,10)+'…':p.name);
+      const values = data.processes.map(p=>p.cpu);
+      if(!processChart){
+        processChart = new Chart(document.getElementById('processChart'), {
+          type:'bar',
+          data:{labels, datasets:[{label:'CPU %', data:values, backgroundColor:'#22d3ee', borderRadius:6, maxBarThickness:38}]},
+          options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{min:0}, x:{grid:{display:false}}} }
+        });
+      } else {
+        processChart.data.labels = labels;
+        processChart.data.datasets[0].data = values;
+        processChart.update();
+      }
+    })
+    .catch(err=>console.error('Failed to load processes:', err));
+}
+
+function changeProcPage(delta){
+  const next = currentProcPage + delta;
+  if(next < 1 || next > procTotalPages) return;
+  loadProcesses(next);
+}
+
+document.getElementById('processSearch').addEventListener('input', function(){
+  const filter = this.value.toLowerCase();
+  const rows = document.getElementById('procTable').getElementsByTagName('tr');
+  for(let i=0;i<rows.length;i++){
+    const nameCell = rows[i].getElementsByTagName('td')[0];
+    const pidCell = rows[i].getElementsByTagName('td')[1];
+    if(nameCell && pidCell){
+      const match = nameCell.textContent.toLowerCase().includes(filter) || pidCell.textContent.toLowerCase().includes(filter);
+      rows[i].style.display = match ? '' : 'none';
+    }
+  }
+});
+
+async function killProc(pid){
+  try{
+    const response = await fetch('/kill-process', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({pid})
+    });
+    const result = await response.json();
+    const msgBox = document.getElementById('process-message');
+    msgBox.classList.add('show');
+    msgBox.className = 'msg show ' + (result.status === 'success' ? 'ok' : 'err');
+    msgBox.innerText = result.message;
+    if(result.status === 'success') loadProcesses(currentProcPage);
+  }catch(err){
+    console.error('Error killing process:', err);
+  }
+}
+
+/* ---------------- network monitor ---------------- */
+let netChart = null;
+
+function loadListeningPorts(){
+  fetch('/listening-ports')
+    .then(res=>res.json())
+    .then(data=>{
+      const tbody = document.getElementById('portsTable');
+      tbody.innerHTML = '';
+      (data.ports || []).forEach(p=>{
+        const row = document.createElement('tr');
+        const badge = p.risky ? '<span class="badge danger">Risky</span>' : '<span class="badge success">Normal</span>';
+        row.innerHTML = `<td class="mono">${p.port}</td><td>${p.protocol}</td><td>${badge}</td>`;
+        tbody.appendChild(row);
+      });
+      if(!(data.ports || []).length){
+        tbody.innerHTML = '<tr><td colspan="3" class="stat-label">No listening ports detected, or permission denied reading socket table.</td></tr>';
+      }
+    })
+    .catch(err=>console.error('Failed to load listening ports:', err));
+}
+
+function loadNetwork(){
+  loadListeningPorts();
+  fetch('/network-usage')
+    .then(res=>res.json())
+    .then(data=>{
+      const tbody = document.getElementById('netTable');
+      tbody.innerHTML = '';
+      (data.connections || []).forEach(c=>{
+        const row = document.createElement('tr');
+        row.innerHTML = `<td class="mono">${c.ip}</td><td class="mono">${c.port}</td><td>${c.protocol}</td><td><span class="badge success">${c.status}</span></td>`;
+        tbody.appendChild(row);
+      });
+
+      const sentMB = (data.sent/1024/1024).toFixed(1);
+      const recvMB = (data.recv/1024/1024).toFixed(1);
+      if(!netChart){
+        netChart = new Chart(document.getElementById('netChart'), {
+          type:'bar',
+          data:{labels:['Sent (MB)','Received (MB)'], datasets:[{data:[sentMB, recvMB], backgroundColor:['#22d3ee','#7c5cff'], borderRadius:8, maxBarThickness:60}]},
+          options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}}}}
+        });
+      } else {
+        netChart.data.datasets[0].data = [sentMB, recvMB];
+        netChart.update();
+      }
+    })
+    .catch(err=>console.error('Failed to load network usage:', err));
+}
+
+
+/* ---------------- persistence monitor ---------------- */
+function loadStartupItems(){
+  const banner = document.getElementById('startupStatusBanner');
+  banner.className = 'scan-result-card success';
+  banner.innerHTML = '<h4>Scanning startup entries…</h4>';
+
+  fetch('/startup-items')
+    .then(res=>res.json())
+    .then(data=>{
+      banner.className = `scan-result-card ${data.status}`;
+      banner.innerHTML = `<h4>${data.count} startup entr${data.count===1?'y':'ies'} found</h4>`;
+
+      const tbody = document.getElementById('startupTable');
+      tbody.innerHTML = '';
+      (data.details || []).forEach(d=>{
+        const row = document.createElement('tr');
+        row.innerHTML = `<td class="mono">${d}</td>`;
+        tbody.appendChild(row);
+      });
+    })
+    .catch(err=>console.error('Failed to load startup items:', err));
+}
+setInterval(()=>{
+  if(document.getElementById('file').classList.contains('active')) loadStartupItems();
+}, 15000);
+
+
+/* ---------------- security audit ---------------- */
+let auditPoller = null;
+function startFullAudit(){
+  const status = document.getElementById('scanStatus');
+  const resultsContainer = document.getElementById('scanResults');
+  const radar = document.getElementById('radarLoader');
+  const radarText = document.getElementById('radarText');
+  const scanButton = document.getElementById('scanButton');
+
+  resultsContainer.classList.remove('show');
+  radar.classList.remove('hidden');
+  radarText.classList.remove('hidden');
+  scanButton.disabled = true;
+  scanButton.innerText = 'Scanning…';
+
+   const steps = [
+    '🔍 Initializing full system scan…',
+    '🛡️ Enumerating running processes…',
+    '🧬 Cross-checking process signatures for threats…',
+    '⚙️ Reading startup & persistence entries…',
+    '🌐 Sweeping local ports for exposure…',
+    '📡 Analyzing network exposure surface…',
+    '📊 Compiling security score…'
+  ];
+  let stepIdx = 0;
+  status.innerHTML = `<span class="mono">[${stepIdx+1}/${steps.length}]</span> ${steps[0]}`;
+  if(window._scanStepTimer) clearInterval(window._scanStepTimer);
+  window._scanStepTimer = setInterval(()=>{
+    if(stepIdx >= steps.length - 1){
+      clearInterval(window._scanStepTimer);
+      window._scanStepTimer = null;
+      return; // hold on the last step until the poller confirms completion
+    }
+    stepIdx++;
+    status.innerHTML = `<span class="mono">[${stepIdx+1}/${steps.length}]</span> ${steps[stepIdx]}`;
+  }, 900);
+
+  if(auditPoller) clearInterval(auditPoller);
+
+  fetch('/start-full-audit', {method:'POST'})
+    .then(res=>res.json())
+    .then(data=>{
+      if(data.status === 'success'){
+        status.innerHTML = 'Scanning… this may take a minute.';
+        auditPoller = setInterval(pollAuditStatus, 2000);
+      } else {
+        if(window._scanStepTimer) clearInterval(window._scanStepTimer);
+        status.innerHTML = `❌ Error: ${data.message}`;
+        radar.classList.add('hidden');
+        radarText.classList.add('hidden');
+        scanButton.disabled = false;
+        scanButton.innerText = 'Start Full Security Audit';
+      }
+    })
+    .catch(()=>{
+      if(window._scanStepTimer) clearInterval(window._scanStepTimer);
+      status.innerHTML = '❌ Failed to start scan. Is the server running?';
+      radar.classList.add('hidden');
+      radarText.classList.add('hidden');
+      scanButton.disabled = false;
+      scanButton.innerText = 'Start Full Security Audit';
+    });
+}
+
+function pollAuditStatus(){
+  fetch('/audit-status')
+    .then(res=>res.json())
+    .then(data=>{
+      if(data.status === 'running'){
+        document.getElementById('scanStatus').innerHTML = 'Scanning… still working…';
+      } else if(data.status === 'complete'){
+        clearInterval(auditPoller);
+        auditPoller = null;
+        if(window._scanStepTimer) clearInterval(window._scanStepTimer);
+        sendNotify('Security Audit Complete', 'Sentinel Py has finished scanning your system.');
+        refreshAll();
+        document.getElementById('radarLoader').classList.add('hidden');
+        document.getElementById('radarText').classList.add('hidden');
+        document.getElementById('scanButton').disabled = false;
+        document.getElementById('scanButton').innerText = 'Run Audit Again';
+        document.getElementById('scanStatus').innerHTML = `Scan complete at: ${data.results.scanTime}`;
+        displayAuditResults(data.results);
+      }
+    })
+    .catch(err=>{
+      clearInterval(auditPoller);
+      auditPoller = null;
+      document.getElementById('scanStatus').innerHTML = '❌ Error fetching scan status.';
+      console.error('Audit poll error:', err);
+    });
+}
+
+function runSingleScan(type){
+  const btnMap = { processes: 'btnScanProc', network: 'btnScanNet' };
+  const boxMap = { processes: 'processResult', network: 'networkResult' };
+  const labelMap = {
+    processes: {
+      title: '🛡️ Process Scan', originalText: 'Scan Processes Only',
+      phases: ['Enumerating running processes…', 'Cross-checking signatures…', 'Finalizing results…']
+    },
+    network: {
+      title: '🌐 Network Scan', originalText: 'Scan Ports Only',
+      phases: ['Sweeping local ports…', 'Checking against known risky ports…', 'Finalizing results…']
+    }
+  };
+
+  const btn = document.getElementById(btnMap[type]);
+  const box = document.getElementById(boxMap[type]);
+  const label = labelMap[type];
+
+  btn.disabled = true;
+
+  // cycle through fake scanning phases on the button while the real fetch runs
+  let phaseIdx = 0;
+  btn.innerHTML = `<span class="mini-spinner"></span>${label.phases[0]}`;
+  const phaseTimer = setInterval(()=>{
+    phaseIdx = (phaseIdx + 1) % label.phases.length;
+    btn.innerHTML = `<span class="mini-spinner"></span>${label.phases[phaseIdx]}`;
+  }, 800);
+
+  const minDelay = new Promise(resolve => setTimeout(resolve, 2400 + Math.random() * 600)); // 2.4–3s
+  const fetchResult = fetch(`/scan/${type}`, { method: 'POST' }).then(res => res.json());
+
+  Promise.all([fetchResult, minDelay])
+    .then(([result]) => {
+      box.className = `scan-result-card ${result.status}`;
+      box.innerHTML = `<h4>${label.title} (${result.count} found)</h4><ul>${result.details.map(d => `<li>${d}</li>`).join('')}</ul>`;
+      document.getElementById('scanResults').classList.add('show');
+      loadThreatFeed();
+    })
+    .catch(err => {
+      box.className = 'scan-result-card danger';
+      box.innerHTML = `<h4>${label.title}</h4><ul><li>Scan failed — check server connection.</li></ul>`;
+      console.error(`Single scan (${type}) failed:`, err);
+    })
+    .finally(() => {
+      clearInterval(phaseTimer);
+      btn.disabled = false;
+      btn.innerText = label.originalText;
+    });
+}
+
+function displayAuditResults(results){
+  const container = document.getElementById('scanResults');
+  const processBox = document.getElementById('processResult');
+  const networkBox = document.getElementById('networkResult');
+
+  const proc = results.processes;
+  processBox.className = `scan-result-card ${proc.status}`;
+  processBox.innerHTML = `<h4>🛡️ Process Scan (${proc.count} found)</h4><ul>${proc.details.map(d=>`<li>${d}</li>`).join('')}</ul>`;
+
+  const net = results.network;
+  networkBox.className = `scan-result-card ${net.status}`;
+  networkBox.innerHTML = `<h4>🌐 Network Scan (${net.count} found)</h4><ul>${net.details.map(d=>`<li>${d}</li>`).join('')}</ul>`;
+
+  const hostsBox = document.getElementById('hostsResult');
+  const hosts = results.hosts;
+  hostsBox.className = `scan-result-card ${hosts.status}`;
+  hostsBox.innerHTML = `<h4>🧭 Hosts File Integrity (${hosts.count} found)</h4><ul>${hosts.details.map(d=>`<li>${d}</li>`).join('')}</ul>`;
+
+  container.classList.add('show');
+}
+
+function sendNotify(title, msg){
+  if(!('Notification' in window)) return;
+  if(Notification.permission === 'granted'){
+    new Notification(title, {body: msg});
+  } else if(Notification.permission !== 'denied'){
+    Notification.requestPermission().then(p=>{ if(p === 'granted') new Notification(title, {body: msg}); });
+  }
+}
+
+/* ---------------- pdf report download ---------------- */
+function downloadReport(){
+  const btn = document.getElementById('sendLogsBtn');
+  const msgBox = document.getElementById('sendLogsMsg');
+    const payload = {
+    type: document.getElementById('logType').value
+  };
+
+  btn.disabled = true;
+  btn.innerText = 'Generating…';
+  fetch('/generate-report', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  })
+    .then(res=>{
+      if(!res.ok) throw new Error('Report generation failed');
+      return res.blob();
+    })
+    .then(blob=>{
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `SentinelPy_Report_${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      msgBox.className = 'msg show ok';
+      msgBox.innerText = 'Report downloaded successfully.';
+    })
+    .catch(()=>{
+      msgBox.className = 'msg show err';
+      msgBox.innerText = 'Failed to generate report. Check server connection.';
+    })
+    .finally(()=>{
+      btn.disabled = false;
+      btn.innerText = 'Generate & Download PDF';
+    });
+}
+
+/* ---------------- boot splash (terminal boot log) ---------------- */
+(function(){
+  const terminal = document.getElementById('bootTerminal');
+  const fill = document.getElementById('bootProgressFill');
+  const pct = document.getElementById('bootProgressPct');
+  const splash = document.getElementById('bootSplash');
+
+  const steps = [
+    'Establishing secure kernel hooks',
+    'Loading process monitor module',
+    'Loading network exposure module',
+    'Loading persistence scanner',
+    'Syncing threat intelligence feed',
+    'Calibrating security scoring engine',
+    'All systems nominal'
+  ];
+
+  let i = 0;
+  function typeNext(){
+    if(i >= steps.length){
+      setTimeout(()=> splash.classList.add('hide'), 350);
+      return;
+    }
+    const line = document.createElement('div');
+    line.className = 'boot-line';
+    line.innerHTML = `<span class="ok">[OK]</span><span>${steps[i]}</span>`;
+    terminal.appendChild(line);
+    terminal.scrollTop = terminal.scrollHeight;
+
+    i++;
+    const p = Math.round((i / steps.length) * 100);
+    fill.style.width = p + '%';
+    pct.innerText = p + '%';
+
+    setTimeout(typeNext, 260 + Math.random()*220);
+  }
+  typeNext();
+})();
+
+/* ---------------- firewall status ---------------- */
+function loadFirewallStatus(){
+  const shield = document.getElementById('fwShield');
+  const statusText = document.getElementById('fwStatusText');
+  const subText = document.getElementById('fwSubText');
+  const platformText = document.getElementById('fwPlatform');
+
+  fetch('/firewall-status')
+    .then(res => res.json())
+    .then(data => {
+      shield.classList.remove('on', 'off', 'unknown');
+      if(data.enabled === true){
+        shield.classList.add('on');
+        statusText.className = 'fw-status-text on';
+        statusText.innerText = 'Protected';
+        subText.innerText = 'System firewall is active and enforcing rules.';
+      } else if(data.enabled === false){
+        shield.classList.add('off');
+        statusText.className = 'fw-status-text off';
+        statusText.innerText = 'Exposed';
+        subText.innerText = 'Firewall is disabled — this machine is unprotected.';
+      } else {
+        shield.classList.add('unknown');
+        statusText.className = 'fw-status-text unknown';
+        statusText.innerText = 'Unknown';
+        subText.innerText = data.raw || 'Could not determine firewall state.';
+      }
+      platformText.innerText = data.platform || '';
+    })
+    .catch(() => {
+      shield.classList.remove('on', 'off');
+      shield.classList.add('unknown');
+      document.getElementById('fwStatusText').className = 'fw-status-text unknown';
+      document.getElementById('fwStatusText').innerText = 'Unknown';
+      subText.innerText = 'Could not reach server to check firewall.';
+    });
+}
+setInterval(loadFirewallStatus, 15000);
+
+/* ---------------- OS patch/update status ---------------- */
+function loadPatchStatus(){
+  const orbit = document.getElementById('patchOrbit');
+  const statusText = document.getElementById('patchStatusText');
+  const subText = document.getElementById('patchSubText');
+  const platformText = document.getElementById('patchPlatform');
+  const btn = document.getElementById('patchRescanBtn');
+
+  orbit.className = 'patch-orbit checking';
+  statusText.className = 'patch-status-text';
+  statusText.innerText = 'Checking…';
+  subText.innerText = 'Querying OS update service — this can take a moment';
+  btn.disabled = true;
+
+  const startTime = Date.now();
+  fetch('/patch-status')
+    .then(res => res.json())
+    .then(data => {
+      const elapsed = Date.now() - startTime;
+      const minSpin = Math.max(0, 1400 - elapsed); // let the spin animation feel real even if the check was fast
+      setTimeout(() => {
+        platformText.innerText = data.platform || '';
+        if(data.count === 0){
+          orbit.className = 'patch-orbit good';
+          statusText.className = 'patch-status-text good';
+          statusText.innerText = 'Fully Patched';
+        } else if(typeof data.count === 'number' && data.count > 0){
+          orbit.className = 'patch-orbit warn';
+          statusText.className = 'patch-status-text warn';
+          statusText.innerText = `${data.count} Update${data.count === 1 ? '' : 's'} Pending`;
+        } else {
+          orbit.className = 'patch-orbit unknown';
+          statusText.className = 'patch-status-text unknown';
+          statusText.innerText = 'Unknown';
+        }
+        subText.innerText = data.message || '';
+        btn.disabled = false;
+      }, minSpin);
+    })
+    .catch(() => {
+      orbit.className = 'patch-orbit unknown';
+      statusText.className = 'patch-status-text unknown';
+      statusText.innerText = 'Unknown';
+      subText.innerText = 'Could not reach server to check patch status.';
+      btn.disabled = false;
+    });
+}
+setInterval(loadPatchStatus, 300000); // recheck every 5 minutes (patch checks are heavier than other polls)
+
+
+/* ---------------- init ---------------- */
+drawSecurityGauge(0);
+refreshAll();
+loadThreatFeed();
+loadFirewallStatus();
+loadPatchStatus();
+setRefreshRate(2000);
+
+</script>
+</body>
+</html>
