@@ -10,6 +10,10 @@ Sentinel Py runs quietly in the background and gives you a live, browser-based c
 
 ---
 
+> ⚠️ **Windows may show a "Windows protected your PC" SmartScreen warning.** This happens because the app isn't digitally signed (code-signing certificates cost money, and this is a free open-source project) — it does **not** mean the file is unsafe. To run it:
+> 1. Click **More info** on the SmartScreen popup
+> 2. Click **Run anyway**
+
 ## What is Sentinel Py?
 
 Sentinel Py is a lightweight, self-hosted monitoring tool that turns your browser into a live security & performance dashboard for your own computer. It watches your system in real time and surfaces anything worth knowing about: unusual processes, exposed network ports, weak firewall settings, unexpected startup entries, and suspicious file activity.
