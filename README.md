@@ -43,16 +43,6 @@ Sentinel Py has two parts:
 
 When you run Sentinel Py, it starts the backend on `127.0.0.1` (your own machine only) and automatically opens the dashboard in your default browser. Because it only reads from — and binds to — the machine it's running on, whatever you see is *your* system, in real time.
 
-## Getting started
-
-### Option 1 — Just download and run (recommended)
-1. [Download the latest `.exe`](https://github.com/Prateeksaini12/sentinel-py/releases/latest/download/SentinelPy.exe)
-2. Double-click it
-3. Your browser opens automatically with your live dashboard
-
-> Some features — firewall status, registry scanning, and terminating protected processes — need elevated privileges. For full results, right-click the `.exe` and choose **Run as administrator**.
-
-> **A note on antivirus warnings:** small, unsigned `.exe` tools built with PyInstaller are frequently flagged by Windows SmartScreen or antivirus software. This is a well-known false positive caused by *how* the file is packaged, not by anything malicious in it. The full source code below is available if you'd like to verify it yourself, or build it from source instead.
 
 ## Tech stack
 
