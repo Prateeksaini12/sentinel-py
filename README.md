@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ Sentinel Py
+# 🛡️ Sentinel 
 
 **A real-time system & security monitoring dashboard for your desktop.**
 
